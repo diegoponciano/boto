@@ -326,7 +326,7 @@ class S3Connection(AWSAuthConnection):
         if key.endswith("${filename}"):
             conditions.append(["starts-with", "$key", key[:-len("${filename}")]])
         else:
-            conditions.append([{"key": key}])
+            conditions.append({"key": key})
 
         if acl:
             conditions.append({"acl": acl})
