@@ -26,6 +26,7 @@ import xml.sax
 import base64
 from boto.compat import six, urllib
 import time
+import json
 
 from boto.auth import detect_potential_s3sigv4
 import boto.utils
@@ -233,12 +234,26 @@ class S3Connection(AWSAuthConnection):
         return '{"expiration": "%s",\n"conditions": [%s]}' % \
             (time.strftime(boto.utils.ISO8601, expiration_time), ",".join(conditions))
 
+    def build_json_post_policy(self, expiration_time, conditions):
+        """
+        Taken from the AWS book Python examples and modified for use with boto,
+        this uses the actual JSON routines to build the structure.
+        """
+        assert isinstance(expiration_time, time.struct_time), \
+            'Policy document must include a valid expiration Time object'
+
+        # Convert conditions object mappings to condition statements
+
+        return json.dumps({"expiration": time.strftime(boto.utils.ISO8601, expiration_time),
+                           "conditions": conditions}, ensure_ascii=False).encode('UTF-8')
+
     def build_post_form_args(self, bucket_name, key, expires_in=6000,
                              acl=None, success_action_redirect=None,
                              max_content_length=None,
                              http_method='http', fields=None,
                              conditions=None, storage_class='STANDARD',
-                             server_side_encryption=None):
+                             server_side_encryption=None,
+                             json_condition_list=None):
         """
         Taken from the AWS book Python examples and modified for use with boto
         This only returns the arguments required for the post form, not the
@@ -293,44 +308,61 @@ class S3Connection(AWSAuthConnection):
         """
         if fields is None:
             fields = []
-        if conditions is None:
-            conditions = []
+
+        if not conditions:
+            if json_condition_list:
+                conditions = list(json_condition_list)
+            else:
+                conditions = []
+        else:
+            warnings.warn(DeprecationWarning("The use of conditions parameter is deprecated; use the new json_condition_list instead"))
+            conditions = json.loads('[%s]' % ','.join(conditions))
+
         expiration = time.gmtime(int(time.time() + expires_in))
 
         # Generate policy document
-        conditions.append('{"bucket": "%s"}' % bucket_name)
+        conditions.append({'bucket': str(bucket_name)})
+
         if key.endswith("${filename}"):
-            conditions.append('["starts-with", "$key", "%s"]' % key[:-len("${filename}")])
+            conditions.append(["starts-with", "$key", key[:-len("${filename}")]])
         else:
-            conditions.append('{"key": "%s"}' % key)
+            conditions.append({"key": key})
+
         if acl:
-            conditions.append('{"acl": "%s"}' % acl)
-            fields.append({"name": "acl", "value": acl})
+            conditions.append({"acl": acl})
+            fields.append({"name": "acl", "value": str(acl)})
+
         if success_action_redirect:
-            conditions.append('{"success_action_redirect": "%s"}' % success_action_redirect)
+            conditions.append({"success_action_redirect": str(success_action_redirect)})
             fields.append({"name": "success_action_redirect", "value": success_action_redirect})
+
         if max_content_length:
-            conditions.append('["content-length-range", 0, %i]' % max_content_length)
+            conditions.append(["content-length-range", 0, max_content_length])
 
         if self.provider.security_token:
             fields.append({'name': 'x-amz-security-token',
                            'value': self.provider.security_token})
-            conditions.append('{"x-amz-security-token": "%s"}' % self.provider.security_token)
+            conditions.append({"x-amz-security-token": str(self.provider.security_token)})
 
         if storage_class:
             fields.append({'name': 'x-amz-storage-class',
                            'value': storage_class})
-            conditions.append('{"x-amz-storage-class": "%s"}' % storage_class)
+            conditions.append({"x-amz-storage-class": str(storage_class)})
 
         if server_side_encryption:
             fields.append({'name': 'x-amz-server-side-encryption',
                            'value': server_side_encryption})
-            conditions.append('{"x-amz-server-side-encryption": "%s"}' % server_side_encryption)
+            conditions.append({"x-amz-server-side-encryption", str(server_side_encryption)})
 
-        policy = self.build_post_policy(expiration, conditions)
+        policy = self.build_json_post_policy(expiration, conditions)
 
         # Add the base64-encoded policy document as the 'policy' field
         policy_b64 = base64.b64encode(policy)
+
+        # str is required on Python 2 and Python 3
+        if not isinstance(policy_b64, str):
+            policy_b64 = policy_b64.decode('ascii')
+
         fields.append({"name": "policy", "value": policy_b64})
 
         # Add the AWS access key as the 'AWSAccessKeyId' field
