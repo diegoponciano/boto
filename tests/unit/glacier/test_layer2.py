@@ -293,7 +293,8 @@ class TestVault(GlacierLayer2Base):
             sentinel.upload_id, file_obj=sentinel.file_obj)
         mock_resume_file_upload.assert_called_once_with(
             self.vault, sentinel.upload_id, part_size, sentinel.file_obj,
-            {0: codecs.decode('12', 'hex_codec'), 1: codecs.decode('34', 'hex_codec')})
+            {0: codecs.decode('12'.encode(), 'hex_codec'),
+             1: codecs.decode('34'.encode(), 'hex_codec')})
 
 
 class TestJob(GlacierLayer2Base):

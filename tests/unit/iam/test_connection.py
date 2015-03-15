@@ -359,7 +359,7 @@ class TestGetCredentialReport(AWSMockServiceTestCase):
         response = self.service_connection.get_credential_report()
         b64decode(response['get_credential_report_response']
                           ['get_credential_report_result']
-                          ['content'])
+                          ['content'].encode())
 
 class TestCreateVirtualMFADevice(AWSMockServiceTestCase):
     connection_class = IAMConnection

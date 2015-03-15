@@ -96,7 +96,7 @@ def convert_num(s):
 
 
 def convert_binary(n):
-    return Binary(base64.b64decode(n))
+    return Binary(base64.b64decode(n.encode()))
 
 
 def get_dynamodb_type(val, use_boolean=True):
